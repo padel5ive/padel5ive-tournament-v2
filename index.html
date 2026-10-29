@@ -1844,8 +1844,12 @@ function scoreReset(action){
      // A winner is official only if the decisive match is complete.
      if(last?.valid && Number.isInteger(last.winner)){
        champion=last.winner;
-       const finalistIds=[last.a?.id,last.b?.id];
-       runnerUp=finalistIds.find(id=>Number.isInteger(id)&&id!==champion)??null;
+       // Final loser is the official runner-up (including a Grand Final reset).
+       runnerUp=Number.isInteger(last.loser)?last.loser:null;
+       if(!Number.isInteger(runnerUp)){
+         const finalistIds=[last.a?.id,last.b?.id];
+         runnerUp=finalistIds.find(id=>Number.isInteger(id)&&id!==champion)??null;
+       }
      }
    } else {
      const scheduledCount=schedule.reduce((n,round)=>n+round.filter(Boolean).length,0);
@@ -1887,9 +1891,17 @@ function scoreReset(action){
    const detailSection=(title,list)=>list.length?`<div class="round-label">${title}</div>${list.map(m=>`<div class="result"><span>M${m.id} · ${name(m.a)} vs ${name(m.b)}</span><span>${fmtScore(m)}</span></div>`).join('')}`:'';
    const detailHTML=gf.length||stages.length||losersGroups.length?`<details class="details"><summary>View all Playoff Match Results <span class="small">by round</span></summary><div class="inner">${detailSection('CHAMPIONSHIP FINALS',gf)}${stages.slice().reverse().map(r=>detailSection('WINNERS · '+r.name,r.items)).join('')}${losersGroups.slice().reverse().map(r=>detailSection(r.name,r.items)).join('')}</div></details>`:'';
    let runner='';
-   const runnerId=Number.isInteger(data.runnerUp)?data.runnerUp:(Number.isInteger(data.champion)&&gf.length?(gf[gf.length-1].a===data.champion?gf[gf.length-1].b:gf[gf.length-1].a):(!matches.length&&Number.isInteger(data.champion)?data.rows?.[1]?.id:null));
-   if(Number.isInteger(runnerId)&&runnerId!==data.champion)runner=`<span>RUNNERS-UP · ${name(runnerId)}</span>`;
-   const champ=Number.isInteger(data.champion)?`<section class="champion"><div class="trophy">✦</div><div class="eyebrow">TOURNAMENT CHAMPIONS</div><h2>${name(data.champion)}</h2><div class="champion-sub">${matches.length?"Official championship winners":"Americano final ranking · Rank #1"}</div>${runner?`<div class="pair-sub">${runner}</div>`:''}</section>`:`<section class="champion"><div class="trophy">✦</div><div class="eyebrow">CHAMPIONSHIP IN PROGRESS</div><h2>Results in progress</h2><div class="champion-sub">Champion will appear when the tournament is completed</div></section>`;
+   // Resolve finalists from the actual deciding score, not only from optional snapshot metadata.
+   const firstFinal=find(30),resetFinal=find(31);
+   const resetRequired=isDouble&&firstFinal&&Number(firstFinal.y)>Number(firstFinal.x);
+   const decidingMatch=isDouble?(resetRequired?resetFinal:firstFinal):find(25);
+   const inferredWinner=decidingMatch?(Number(decidingMatch.x)>Number(decidingMatch.y)?decidingMatch.a:decidingMatch.b):null;
+   const inferredLoser=decidingMatch?(Number(decidingMatch.x)>Number(decidingMatch.y)?decidingMatch.b:decidingMatch.a):null;
+   const resolvedChampion=Number.isInteger(data.champion)?data.champion:(Number.isInteger(inferredWinner)?inferredWinner:null);
+   const candidateRunner=Number.isInteger(data.runnerUp)?data.runnerUp:inferredLoser;
+   const runnerId=Number.isInteger(candidateRunner)&&candidateRunner!==resolvedChampion?candidateRunner:(!matches.length&&Number.isInteger(resolvedChampion)?data.rows?.[1]?.id:null);
+   if(Number.isInteger(runnerId)&&runnerId!==resolvedChampion)runner=`<span>RUNNERS-UP · ${name(runnerId)}</span>`;
+   const champ=Number.isInteger(resolvedChampion)?`<section class="champion"><div class="trophy">✦</div><div class="eyebrow">TOURNAMENT CHAMPIONS</div><h2>${name(resolvedChampion)}</h2><div class="champion-sub">${matches.length?"Official championship winners":"Americano final ranking · Rank #1"}</div>${runner?`<div class="pair-sub">${runner}</div>`:''}</section>`:`<section class="champion"><div class="trophy">✦</div><div class="eyebrow">CHAMPIONSHIP IN PROGRESS</div><h2>Results in progress</h2><div class="champion-sub">Champion will appear when the tournament is completed</div></section>`;
    const playoff=(matches.length?`<section class="section"><div class="section-head"><h2><span class="num">01 /</span>Playoff Bracket</h2><span class="label">${fmt}</span></div>${finals}${wb}${lb}${detailHTML}</section>`:'');
    const ranking=(data.rows||[]).map((r,i)=>`<tr><td><button type="button" class="pair-ranking-link" data-pair-id="${r.id}" title="Analyze ${name(r.id)}">${String(i+1).padStart(2,'0')} · ${name(r.id)} ↗</button></td><td>${r.w}–${r.l}–${r.t}</td><td>${r.diff>0?'+':''}${r.diff}</td><td>${r.p}</td></tr>`).join('');
    const board=`<section class="section"><div class="section-head"><h2><span class="num">${matches.length?'02':'01'} /</span>Americano Leaderboard</h2><span class="label">AMERICANO RANKING</span></div><div class="leader-card"><table class="leader"><thead><tr><th>PAIR</th><th>W–L–T</th><th>DIFF</th><th>P</th></tr></thead><tbody>${ranking}</tbody></table></div><p class="small">Ranked by Wins → Difference → Points For.</p></section>`;
